@@ -90,14 +90,40 @@ impl nanoserde::DeJson for DelegationType {
 pub struct RegistryCredential {
     pub id: String,
     pub delegation_type: DelegationType,
+    pub dedup_id: Option<String>,
+    #[nserde(rename = "dedupId")]
+    pub dedup_id_camel: Option<String>,
+    pub rank: Option<i32>,
     pub display: RegistryDisplay,
     pub paths: DeterministicMap<String, JsonValue>, // Recursive structure
+}
+
+impl RegistryCredential {
+    pub fn dedup_id(&self) -> Option<&str> {
+        self.dedup_id
+            .as_deref()
+            .or(self.dedup_id_camel.as_deref())
+            .or(self.display.dedup_id.as_deref())
+            .or(self.display.dedup_id_camel.as_deref())
+            .or(self.display.verification.dedup_id.as_deref())
+            .or(self.display.verification.dedup_id_camel.as_deref())
+    }
+
+    pub fn rank(&self) -> Option<i32> {
+        self.rank
+            .or(self.display.rank)
+            .or(self.display.verification.rank)
+    }
 }
 
 #[derive(DeJson, Debug, Clone, Default)]
 #[nserde(default)]
 pub struct RegistryDisplay {
     pub verification: RegistryVerification,
+    pub dedup_id: Option<String>,
+    #[nserde(rename = "dedupId")]
+    pub dedup_id_camel: Option<String>,
+    pub rank: Option<i32>,
 }
 
 #[derive(DeJson, Debug, Clone, Default)]
@@ -109,6 +135,10 @@ pub struct RegistryVerification {
     pub warning: String,
     pub metadata_display_text: String,
     pub icon: Option<RegistryIcon>,
+    pub dedup_id: Option<String>,
+    #[nserde(rename = "dedupId")]
+    pub dedup_id_camel: Option<String>,
+    pub rank: Option<i32>,
 }
 
 #[derive(DeJson, Debug, Clone, Default)]
@@ -149,6 +179,8 @@ pub struct MatchedClaim<'a> {
 pub struct MatchedCredential<'a> {
     pub id: &'a str,
     pub delegation_type: DelegationType,
+    pub dedup_id: Option<&'a str>,
+    pub rank: Option<i32>,
     pub display: &'a RegistryDisplay,
     pub matched_claim_names: Vec<&'a JsonValue>, // RegistryClaimDisplay
     pub matched_claim_metadata: Vec<&'a [String]>,
@@ -498,5 +530,23 @@ mod tests {
         let json_default = r#"{"id":"c3","display":{"verification":{"title":"","subtitle":"","explainer":"","warning":"","metadata_display_text":""}},"paths":{}}"#;
         let cred_default: RegistryCredential = DeJson::deserialize_json(json_default).unwrap();
         assert_eq!(cred_default.delegation_type, DelegationType::None);
+    }
+
+    #[test]
+    fn test_parse_dedup_id_and_rank() {
+        let json_camel = r#"{"id":"c1","dedupId":"sim1","rank":0,"display":{"verification":{"title":"","subtitle":"","explainer":"","warning":"","metadata_display_text":""}},"paths":{}}"#;
+        let cred_camel: RegistryCredential = DeJson::deserialize_json(json_camel).unwrap();
+        assert_eq!(cred_camel.dedup_id(), Some("sim1"));
+        assert_eq!(cred_camel.rank(), Some(0));
+
+        let json_snake = r#"{"id":"c2","dedup_id":"sim2","rank":10,"display":{"verification":{"title":"","subtitle":"","explainer":"","warning":"","metadata_display_text":""}},"paths":{}}"#;
+        let cred_snake: RegistryCredential = DeJson::deserialize_json(json_snake).unwrap();
+        assert_eq!(cred_snake.dedup_id(), Some("sim2"));
+        assert_eq!(cred_snake.rank(), Some(10));
+
+        let json_none = r#"{"id":"c3","display":{"verification":{"title":"","subtitle":"","explainer":"","warning":"","metadata_display_text":""}},"paths":{}}"#;
+        let cred_none: RegistryCredential = DeJson::deserialize_json(json_none).unwrap();
+        assert_eq!(cred_none.dedup_id(), None);
+        assert_eq!(cred_none.rank(), None);
     }
 }
