@@ -7,6 +7,7 @@ use nanoserde::DeJson;
 /// Reports a credential as a payment transaction entry to Credential Manager.
 fn report_payment_transaction_entry(
     credman: &mut impl CredmanApi,
+    wasm_version: u32,
     matched_credential: &MatchedCredential<'_>,
     document_index: i32,
     credential_set_id: &str,
@@ -43,6 +44,25 @@ fn report_payment_transaction_entry(
         document_index,
         matched_credential.delegation_type,
     );
+
+    // Report dedup id and rank if supported by Wasm version.
+    if wasm_version >= 10
+        && (matched_credential.dedup_id.is_some() || matched_credential.rank.is_some())
+    {
+        log::trace!(
+            "Setting dedup id ({:?}) and rank ({:?}) for payment entry {}",
+            matched_credential.dedup_id,
+            matched_credential.rank,
+            matched_credential.id
+        );
+        credman.set_dedup_id_and_rank_for_entry_in_set(
+            matched_credential.id,
+            matched_credential.dedup_id,
+            matched_credential.rank.unwrap_or(0),
+            credential_set_id,
+            document_index,
+        );
+    }
     Ok(())
 }
 
@@ -139,6 +159,25 @@ fn report_standard_verification_entry(
             document_index,
         );
     }
+
+    // Report dedup id and rank if supported by Wasm version.
+    if wasm_version >= 10
+        && (matched_credential.dedup_id.is_some() || matched_credential.rank.is_some())
+    {
+        log::trace!(
+            "Setting dedup id ({:?}) and rank ({:?}) for entry {}",
+            matched_credential.dedup_id,
+            matched_credential.rank,
+            matched_credential.id
+        );
+        credman.set_dedup_id_and_rank_for_entry_in_set(
+            matched_credential.id,
+            matched_credential.dedup_id,
+            matched_credential.rank.unwrap_or(0),
+            credential_set_id,
+            document_index,
+        );
+    }
     Ok(())
 }
 
@@ -185,6 +224,7 @@ fn report_matched_credential(
             if td_ids.iter().any(|id| id == matched_credential_id) {
                 report_payment_transaction_entry(
                     credman,
+                    wasm_version,
                     matched_credential,
                     document_index,
                     credential_set_id,
@@ -490,6 +530,7 @@ mod tests {
         wasm_version: u32,
         added_entries: Vec<String>,
         added_delegations: Vec<(String, DelegationType)>,
+        added_dedup_and_rank: Vec<(String, Option<String>, i32)>,
         added_fields: Vec<(String, String, String)>,
         payment_entries: Vec<String>,
         inline_entries: Vec<String>,
@@ -603,6 +644,20 @@ mod tests {
             _package_icon: &[u8],
         ) {
         }
+        fn set_dedup_id_and_rank_for_entry_in_set(
+            &mut self,
+            cred_id: &str,
+            dedup_id: Option<&str>,
+            rank: i32,
+            _set_id: &str,
+            _set_index: i32,
+        ) {
+            self.added_dedup_and_rank.push((
+                cred_id.to_string(),
+                dedup_id.map(|d| d.to_string()),
+                rank,
+            ));
+        }
     }
 
     #[test]
@@ -611,6 +666,7 @@ mod tests {
             wasm_version: 1,
             added_entries: vec![],
             added_delegations: vec![],
+            added_dedup_and_rank: vec![],
             added_fields: vec![],
             payment_entries: vec![],
             inline_entries: vec![],
@@ -635,6 +691,7 @@ mod tests {
             wasm_version: 1,
             added_entries: vec![],
             added_delegations: vec![],
+            added_dedup_and_rank: vec![],
             added_fields: vec![],
             payment_entries: vec![],
             inline_entries: vec![],
@@ -650,7 +707,9 @@ mod tests {
                 warning: "".to_string(),
                 metadata_display_text: "".to_string(),
                 icon: None,
+                ..Default::default()
             },
+            ..Default::default()
         };
 
         let mut matched_credentials = DeterministicMap::new();
@@ -661,6 +720,8 @@ mod tests {
                 matched: vec![MatchedCredential {
                     id: "cred1",
                     delegation_type: DelegationType::None,
+                    dedup_id: None,
+                    rank: None,
                     display: &display,
                     matched_claim_names: vec![],
                     matched_claim_metadata: vec![],
@@ -693,6 +754,7 @@ mod tests {
             wasm_version: 7,
             added_entries: vec![],
             added_delegations: vec![],
+            added_dedup_and_rank: vec![],
             added_fields: vec![],
             payment_entries: vec![],
             inline_entries: vec![],
@@ -708,7 +770,9 @@ mod tests {
                 warning: "".to_string(),
                 metadata_display_text: "".to_string(),
                 icon: None,
+                ..Default::default()
             },
+            ..Default::default()
         };
 
         let mut matched_credentials = DeterministicMap::new();
@@ -719,6 +783,8 @@ mod tests {
                 matched: vec![MatchedCredential {
                     id: "cred_full",
                     delegation_type: DelegationType::Full,
+                    dedup_id: None,
+                    rank: None,
                     display: &display,
                     matched_claim_names: vec![],
                     matched_claim_metadata: vec![],
@@ -754,6 +820,7 @@ mod tests {
             wasm_version: 7,
             added_entries: vec![],
             added_delegations: vec![],
+            added_dedup_and_rank: vec![],
             added_fields: vec![],
             payment_entries: vec![],
             inline_entries: vec![],
@@ -769,7 +836,9 @@ mod tests {
                 warning: "".to_string(),
                 metadata_display_text: "".to_string(),
                 icon: None,
+                ..Default::default()
             },
+            ..Default::default()
         };
 
         let mut matched_credentials = DeterministicMap::new();
@@ -780,6 +849,8 @@ mod tests {
                 matched: vec![MatchedCredential {
                     id: "cred_pay",
                     delegation_type: DelegationType::Full,
+                    dedup_id: None,
+                    rank: None,
                     display: &display,
                     matched_claim_names: vec![],
                     matched_claim_metadata: vec![],
@@ -820,6 +891,7 @@ mod tests {
             wasm_version: 1,
             added_entries: vec![],
             added_delegations: vec![],
+            added_dedup_and_rank: vec![],
             added_fields: vec![],
             payment_entries: vec![],
             inline_entries: vec![],
@@ -853,6 +925,7 @@ mod tests {
             wasm_version: 2,
             added_entries: vec![],
             added_delegations: vec![],
+            added_dedup_and_rank: vec![],
             added_fields: vec![],
             payment_entries: vec![],
             inline_entries: vec![],
@@ -919,6 +992,8 @@ mod tests {
                     matched: vec![MatchedCredential {
                         id,
                         delegation_type: DelegationType::None,
+                        dedup_id: None,
+                        rank: None,
                         display: &display,
                         matched_claim_names: vec![],
                         matched_claim_metadata: vec![],
@@ -983,6 +1058,8 @@ mod tests {
             matched: vec![MatchedCredential {
                 id,
                 delegation_type: DelegationType::Full,
+                dedup_id: None,
+                rank: None,
                 display,
                 matched_claim_names: vec![],
                 matched_claim_metadata: vec![],
@@ -996,6 +1073,7 @@ mod tests {
             wasm_version: 7,
             added_entries: vec![],
             added_delegations: vec![],
+            added_dedup_and_rank: vec![],
             added_fields: vec![],
             payment_entries: vec![],
             inline_entries: vec![],
@@ -1037,6 +1115,8 @@ mod tests {
             matched: vec![MatchedCredential {
                 id,
                 delegation_type: DelegationType::None,
+                dedup_id: None,
+                rank: None,
                 display,
                 matched_claim_names: vec![],
                 matched_claim_metadata: vec![],
@@ -1049,6 +1129,7 @@ mod tests {
             wasm_version,
             added_entries: vec![],
             added_delegations: vec![],
+            added_dedup_and_rank: vec![],
             added_fields: vec![],
             payment_entries: vec![],
             inline_entries: vec![],
@@ -1281,6 +1362,7 @@ mod tests {
             delegation_type: d,
             display: RegistryDisplay::default(),
             paths: DeterministicMap::new(),
+            ..Default::default()
         };
         let mut registry = Registry::default();
         let mut mso_mdoc = DeterministicMap::new();
@@ -1359,6 +1441,7 @@ mod tests {
             wasm_version: 7,
             added_entries: vec![],
             added_delegations: vec![],
+            added_dedup_and_rank: vec![],
             added_fields: vec![],
             payment_entries: vec![],
             inline_entries: vec![],
@@ -1402,6 +1485,206 @@ mod tests {
         assert_eq!(
             mock.added_entry_indices,
             vec![("a".to_string(), 0), ("c".to_string(), 2)]
+        );
+    }
+
+    #[test]
+    fn test_report_entry_with_dedup_id_and_rank() {
+        let mut mock = MockCredman {
+            wasm_version: 10,
+            added_entries: vec![],
+            added_delegations: vec![],
+            added_dedup_and_rank: vec![],
+            added_fields: vec![],
+            payment_entries: vec![],
+            inline_entries: vec![],
+            added_entry_sets: vec![],
+            added_entry_indices: vec![],
+        };
+
+        let display = RegistryDisplay {
+            verification: RegistryVerification {
+                title: "Dedup Cred".to_string(),
+                subtitle: "".to_string(),
+                explainer: "".to_string(),
+                warning: "".to_string(),
+                metadata_display_text: "".to_string(),
+                icon: None,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let mut matched_credentials = DeterministicMap::new();
+        matched_credentials.insert(
+            "cred_dedup",
+            DcqlMatchedCredentialEntry {
+                id: "cred_dedup",
+                matched: vec![MatchedCredential {
+                    id: "cred_dedup",
+                    delegation_type: DelegationType::None,
+                    dedup_id: Some("sim1"),
+                    rank: Some(2),
+                    display: &display,
+                    matched_claim_names: vec![],
+                    matched_claim_metadata: vec![],
+                }],
+            },
+        );
+
+        let match_result = DcqlMatchResult {
+            matched_credential_sets: vec![vec![MatchedCredentialSetInfo {
+                set_id: Cow::Borrowed("set1"),
+                option_id: Cow::Borrowed("opt1"),
+                matched_credential_ids: vec!["cred_dedup"],
+                matched_indices: vec![0],
+                option_length: 1,
+            }]],
+            matched_credentials,
+            inline_issuance: None,
+        };
+        let openid4vp_data = OpenId4VpData::default();
+
+        report_match_result(&mut mock, &match_result, 0, &openid4vp_data, &[]).unwrap();
+
+        assert_eq!(mock.added_entries, vec!["cred_dedup"]);
+        assert_eq!(
+            mock.added_dedup_and_rank,
+            vec![("cred_dedup".to_string(), Some("sim1".to_string()), 2)]
+        );
+    }
+
+    #[test]
+    fn test_report_entry_dedup_suppressed_for_older_wasm_version() {
+        let mut mock = MockCredman {
+            wasm_version: 9,
+            added_entries: vec![],
+            added_delegations: vec![],
+            added_dedup_and_rank: vec![],
+            added_fields: vec![],
+            payment_entries: vec![],
+            inline_entries: vec![],
+            added_entry_sets: vec![],
+            added_entry_indices: vec![],
+        };
+
+        let display = RegistryDisplay {
+            verification: RegistryVerification {
+                title: "Dedup Cred".to_string(),
+                subtitle: "".to_string(),
+                explainer: "".to_string(),
+                warning: "".to_string(),
+                metadata_display_text: "".to_string(),
+                icon: None,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let mut matched_credentials = DeterministicMap::new();
+        matched_credentials.insert(
+            "cred_dedup",
+            DcqlMatchedCredentialEntry {
+                id: "cred_dedup",
+                matched: vec![MatchedCredential {
+                    id: "cred_dedup",
+                    delegation_type: DelegationType::None,
+                    dedup_id: Some("sim1"),
+                    rank: Some(2),
+                    display: &display,
+                    matched_claim_names: vec![],
+                    matched_claim_metadata: vec![],
+                }],
+            },
+        );
+
+        let match_result = DcqlMatchResult {
+            matched_credential_sets: vec![vec![MatchedCredentialSetInfo {
+                set_id: Cow::Borrowed("set1"),
+                option_id: Cow::Borrowed("opt1"),
+                matched_credential_ids: vec!["cred_dedup"],
+                matched_indices: vec![0],
+                option_length: 1,
+            }]],
+            matched_credentials,
+            inline_issuance: None,
+        };
+        let openid4vp_data = OpenId4VpData::default();
+
+        report_match_result(&mut mock, &match_result, 0, &openid4vp_data, &[]).unwrap();
+
+        assert_eq!(mock.added_entries, vec!["cred_dedup"]);
+        assert!(mock.added_dedup_and_rank.is_empty());
+    }
+
+    #[test]
+    fn test_report_payment_entry_with_dedup_id_and_rank() {
+        let mut mock = MockCredman {
+            wasm_version: 10,
+            added_entries: vec![],
+            added_delegations: vec![],
+            added_dedup_and_rank: vec![],
+            added_fields: vec![],
+            payment_entries: vec![],
+            inline_entries: vec![],
+            added_entry_sets: vec![],
+            added_entry_indices: vec![],
+        };
+
+        let display = RegistryDisplay {
+            verification: RegistryVerification {
+                title: "Payment Card".to_string(),
+                subtitle: "".to_string(),
+                explainer: "".to_string(),
+                warning: "".to_string(),
+                metadata_display_text: "".to_string(),
+                icon: None,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let mut matched_credentials = DeterministicMap::new();
+        matched_credentials.insert(
+            "cred_pay",
+            DcqlMatchedCredentialEntry {
+                id: "cred_pay",
+                matched: vec![MatchedCredential {
+                    id: "cred_pay",
+                    delegation_type: DelegationType::None,
+                    dedup_id: Some("card_1"),
+                    rank: Some(3),
+                    display: &display,
+                    matched_claim_names: vec![],
+                    matched_claim_metadata: vec![],
+                }],
+            },
+        );
+
+        let match_result = DcqlMatchResult {
+            matched_credential_sets: vec![vec![MatchedCredentialSetInfo {
+                set_id: Cow::Borrowed("set1"),
+                option_id: Cow::Borrowed("opt1"),
+                matched_credential_ids: vec!["cred_pay"],
+                matched_indices: vec![0],
+                option_length: 1,
+            }]],
+            matched_credentials,
+            inline_issuance: None,
+        };
+
+        let td_b64 = "eyJ0eXBlIjoidXJuOmV1ZGk6c2NhOnBheW1lbnQ6MSIsInBheWxvYWQiOnsicGF5ZWUiOnsibmFtZSI6Ik1lcmNoYW50IFgifSwiYW1vdW50X2Rpc3BsYXkiOiJFVVIgNTAuMDAifSwiY3JlZGVudGlhbF9pZHMiOlsibWRsIiwiY3JlZF9wYXkiXX0";
+        let openid4vp_data = OpenId4VpData {
+            transaction_data: vec![td_b64.to_string()],
+            ..Default::default()
+        };
+
+        report_match_result(&mut mock, &match_result, 0, &openid4vp_data, &[]).unwrap();
+
+        assert_eq!(mock.payment_entries, vec!["cred_pay"]);
+        assert_eq!(
+            mock.added_dedup_and_rank,
+            vec![("cred_pay".to_string(), Some("card_1".to_string()), 3)]
         );
     }
 }
